@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Continuous Voice Assistant</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            text-align: center;
+            max-width: 600px;
+            width: 90%;
+        }
+        h1 {
+            margin-bottom: 20px;
+            color: #667eea;
+            font-weight: 300;
+        }
+        .buttons {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+        button:hover {
+            background: #5a6fd8;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .toggle {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 15px 0;
+            font-size: 14px;
+        }
+        .toggle input {
+            margin-right: 8px;
+        }
+        #status {
+            margin: 20px 0;
+            font-size: 18px;
+            font-weight: 500;
+            color: #666;
+            min-height: 24px;
+        }
+        .speech-container {
+            margin: 20px 0;
+        }
+        .speech-box {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 10px 0;
+            min-height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-style: italic;
+            color: #6c757d;
+        }
+        .user-speech {
+            border-left: 4px solid #28a745;
+        }
+        .ai-response {
+            border-left: 4px solid #667eea;
+        }
+        .speaking {
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+        .processing {
+            animation: typing 1.5s infinite;
+        }
+        @keyframes typing {
+            0%, 60%, 100% { opacity: 1; }
+            30% { opacity: 0.3; }
+        }
+        @media (max-width: 600px) {
+            .container {
+                padding: 20px;
+            }
+            .buttons {
+                flex-direction: column;
+                align-items: center;
+            }
+            button {
+                width: 200px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Continuous Voice Assistant</h1>
+        <div class="buttons">
+            <button id="startBtn">Start Talking</button>
+            <button id="debugBtn">Debug Speak</button>
+        </div>
+        <div class="toggle">
+            <input type="checkbox" id="continuous" checked> Continuous Listening
+        </div>
+        <div id="status">Ready</div>
+        <div class="speech-container">
+            <div class="speech-box user-speech" id="userSpeech">Your speech will appear here</div>
+            <div class="speech-box ai-response" id="aiResponse">AI response will appear here</div>
+        </div>
+    </div>
+
+    <script>
+        const startBtn = document.getElementById('startBtn');
+        const debugBtn = document.getElementById('debugBtn');
+        const statusDiv = document.getElementById('status');
+        const userSpeechDiv = document.getElementById('userSpeech');
+        const aiResponseDiv = document.getElementById('aiResponse');
+        const continuousCheckbox = document.getElementById('continuous');
+
+        let recognition;
+        let isListening = false;
+        let voices = [];
+        let voicesLoaded = false;
+        let selectedVoice = null;
+        let isContinuous = true;
+
+        // Initialize Speech Recognition
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            alert('Speech Recognition not supported. Please use Chrome or Edge.');
+            startBtn.disabled = true;
+        } else {
+            recognition = new SpeechRecognition();
+            recognition.continuous = true; // Enable continuous listening
+            recognition.interimResults = false;
+            recognition.lang = 'en-US';
+
+            recognition.onstart = () => {
+                isListening = true;
+                statusDiv.textContent = 'Listening...';
+                statusDiv.classList.add('speaking');
+                startBtn.textContent = 'Stop Talking';
+                console.log('Recognition started');
+            };
+
+            recognition.onresult = (event) => {
+                const transcript = event.results[event.results.length - 1][0].transcript.trim();
+                console.log('Recognized:', transcript);
+                userSpeechDiv.textContent = transcript;
+                processInput(transcript);
+            };
+
+            recognition.onend = () => {
+                isListening = false;
+                statusDiv.textContent = 'Ready';
+                statusDiv.classList.remove('speaking');
+                startBtn.textContent = 'Start Talking';
+                console.log('Recognition ended');
+                // Auto-restart if continuous and not manually stopped
+                if (isContinuous && continuousCheckbox.checked) {
+                    setTimeout(startListening, 500);
+                }
+            };
+
+            recognition.onerror = (event) => {
+                console.error('Recognition error:', event.error);
+                statusDiv.textContent = 'Error: ' + event.error;
+                isListening = false;
+                startBtn.textContent = 'Start Talking';
+                if (isContinuous && continuousCheckbox.checked) {
+                    setTimeout(startListening, 2000); // Retry after error
+                }
+            };
+        }
+
+        // Initialize Speech Synthesis
+        if (!('speechSynthesis' in window)) {
+            alert('Speech Synthesis not supported.');
+            debugBtn.disabled = true;
+        }
+
+        // Load voices
+        function loadVoices() {
+            voices = speechSynthesis.getVoices();
+            if (voices.length > 0) {
+                voicesLoaded = true;
+                selectBestVoice();
+                console.log('Voices loaded:', voices.length);
+            }
+        }
+
+        function selectBestVoice() {
+            // Prefer Microsoft David or en-US voices
+            selectedVoice = voices.find(voice => voice.name.includes('Microsoft David')) ||
+                           voices.find(voice => voice.lang === 'en-US' && voice.name.includes('Male')) ||
+                           voices.find(voice => voice.lang === 'en-US') ||
+                           voices.find(voice => voice.lang.startsWith('en')) ||
+                           voices[0]; // Fallback
+            console.log('Selected voice:', selectedVoice ? selectedVoice.name : 'Default');
+        }
+
+        // Wait for voices to load
+        if (speechSynthesis.getVoices().length > 0) {
+            loadVoices();
+        }
+        if (speechSynthesis.onvoiceschanged !== undefined) {
+            speechSynthesis.onvoiceschanged = loadVoices;
+        }
+
+        // Core functions
+        function startListening() {
+            if (recognition && !isListening) {
+                try {
+                    recognition.start();
+                } catch (error) {
+                    console.error('Failed to start recognition:', error);
+                }
+            }
+        }
+
+        function stopListening() {
+            if (recognition && isListening) {
+                isContinuous = false; // Prevent auto-restart
+                recognition.stop();
+            }
+        }
+
+        function processInput(text) {
+            statusDiv.textContent = 'Thinking...';
+            statusDiv.classList.add('processing');
+            statusDiv.classList.remove('speaking');
+            
+            const response = getResponse(text.toLowerCase());
+            aiResponseDiv.textContent = response;
+            
+            // Stop recognition before speaking to avoid feedback
+            if (isListening) {
+                recognition.stop();
+            }
+            
+            setTimeout(() => {
+                speak(response);
+            }, 400); // Natural delay
+        }
+
+        function getResponse(text) {
+            const greetings = ['hi', 'hello', 'hey', 'good morning', 'good afternoon', 'good evening'];
+            const personal = ['your name', 'who are you', 'what are you'];
+            const feelings = ['how are you', 'how do you feel'];
+            const opinions = ['i like', 'i love', 'i hate', 'i enjoy'];
+            const thanks = ['thank you', 'thanks'];
+            const bye = ['bye', 'goodbye', 'see you'];
+
+            if (greetings.some(word => text.includes(word))) {
+                return ["Hello! How can I help you today?", "Hi there! Nice to meet you.", "Hey! What's on your mind?"][Math.floor(Math.random() * 3)];
+            }
+            if (personal.some(phrase => text.includes(phrase))) {
+                return ["I'm your friendly voice assistant, Alex.", "My name is Alex, your AI companion.", "I'm Alex, here to chat with you."][Math.floor(Math.random() * 3)];
+            }
+            if (feelings.some(phrase => text.includes(phrase))) {
+                return ["I'm doing great! How about you?", "Feeling wonderful today! What's new?", "I'm fantastic! Tell me how you're feeling."][Math.floor(Math.random() * 3)];
+            }
+            if (opinions.some(phrase => text.includes(phrase))) {
+                return ["That's interesting! I share similar interests.", "Great to hear! What else do you enjoy?", "Nice! I love hearing about what people like."][Math.floor(Math.random() * 3)];
+            }
+            if (thanks.some(phrase => text.includes(phrase))) {
+                return ["You're welcome! Anything else?", "My pleasure! What else can I help with?", "Glad I could help! What's next?"][Math.floor(Math.random() * 3)];
+            }
+            if (bye.some(phrase => text.includes(phrase))) {
+                return ["Goodbye! Have a great day!", "See you later! Take care.", "Bye for now! Come back anytime."][Math.floor(Math.random() * 3)];
+            }
+            return ["That's interesting! Can you tell me more?", "I'm not sure I understand. Could you elaborate?", "Hmm, that's a good point. What do you think?", "Tell me more! I'm curious."][Math.floor(Math.random() * 4)];
+        }
+
+        function speak(text) {
+            if (!text || !speechSynthesis) {
+                console.warn('Speech synthesis not available or empty text');
+                return;
+            }
+            
+            console.log('Speaking:', text);
+            speechSynthesis.cancel(); // Cancel any ongoing speech
+            
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'en-US';
+            utterance.rate = 0.9;
+            utterance.pitch = 1;
+            utterance.volume = 1;
+            
+            if (selectedVoice) {
+                utterance.voice = selectedVoice;
+            }
+            
+            utterance.onstart = () => {
+                console.log('Speech started');
+                statusDiv.textContent = 'Speaking...';
+                statusDiv.classList.remove('processing');
+                statusDiv.classList.add('speaking');
+            };
+            
+            utterance.onend = () => {
+                console.log('Speech ended');
+                statusDiv.textContent = 'Ready';
+                statusDiv.classList.remove('speaking');
+                // Restart listening after speaking if continuous
+                if (continuousCheckbox.checked) {
+                    setTimeout(startListening, 500);
+                }
+            };
+            
+            utterance.onerror = (event) => {
+                console.error('Speech synthesis error:', event.error);
+                statusDiv.textContent = 'Speech Error';
+                statusDiv.classList.remove('speaking', 'processing');
+                if (continuousCheckbox.checked) {
+                    setTimeout(startListening, 500);
+                }
+            };
+            
+            speechSynthesis.speak(utterance);
+        }
+
+        // Event listeners
+        startBtn.addEventListener('click', () => {
+            if (isListening) {
+                stopListening();
+            } else {
+                isContinuous = continuousCheckbox.checked;
+                startListening();
+            }
+        });
+
+        continuousCheckbox.addEventListener('change', () => {
+            isContinuous = continuousCheckbox.checked;
+            if (!isContinuous && isListening) {
+                stopListening();
+            }
+        });
+
+        debugBtn.addEventListener('click', () => {
+            speak('Hello, this is a test of the voice assistant.');
+        });
+
+        // Prevent accidental page reloads
+        window.addEventListener('beforeunload', () => {
+            if (speechSynthesis.speaking) {
+                speechSynthesis.cancel();
+            }
+            if (isListening) {
+                recognition.stop();
+            }
+        });
+    </script>
+</body>
+</html>
